@@ -161,11 +161,12 @@
     </div>
 
     <script>
-        // 扩展黑名单：增加更多修图、AI及隐匿标记
+        // 关键审计黑名单
         const BLACKLIST_KEYWORDS = [
             "PHOTOSHOP", "ADOBE", "MEITU", "PICTUREID", "THUMBNAILIMAGE", 
-            "GIMP", "CANVA", "PICSART", "RETOUCH", "FAKED", "THUMBNAIL",
-            "SOFTWARE", "CREATOR", "EDITOR", "XMP", "SENSITIVE", "PROC", "GENAI", "STABLE"
+            "GIMP", "CANVA", "PICSART", "RETOUCH", "FAKED", 
+            "SOFTWARE", "XMP", "GENAI", "STABLE",
+            "国际照明委员会 1931", "国际电工委员会"
         ];
         
         const fileInput = document.getElementById('fileInput');
@@ -242,9 +243,14 @@
                     const binaryContent = new TextDecoder().decode(new Uint8Array(this.result.slice(0, 1000000))).toUpperCase();
                     let hits = new Set();
                     
-                    // 1. 二进制流扫描
+                    // 1. 二进制流及元数据扫描
                     BLACKLIST_KEYWORDS.forEach(word => {
-                        if (binaryContent.includes(word.toUpperCase())) hits.add(word);
+                        const upperWord = word.toUpperCase();
+                        if (binaryContent.includes(upperWord)) {
+                            // 豁免逻辑：如果是 THUMBNAIL SOFTWARE 则不作为异常检出
+                            if (binaryContent.includes("THUMBNAIL SOFTWARE")) return;
+                            hits.add(word);
+                        }
                     });
 
                     // 2. EXIF 精确扫描
@@ -253,15 +259,18 @@
                         hasExif = true;
                         const upperKey = key.toUpperCase();
                         const val = String(tags[key]).toUpperCase();
+                        
                         BLACKLIST_KEYWORDS.forEach(word => {
-                            if (upperKey.includes(word.toUpperCase()) || val.includes(word.toUpperCase())) {
+                            const upperWord = word.toUpperCase();
+                            if (upperKey.includes(upperWord) || val.includes(upperWord)) {
+                                // 豁免逻辑：THUMBNAIL SOFTWARE 组合不报警
+                                if (val === "THUMBNAIL SOFTWARE" || val === "THUMBNAILSOFTWARE") return;
                                 hits.add(word);
                             }
                         });
                         tableBody.innerHTML += `<tr><td class="p-4 font-bold text-blue-500 w-1/3">${key}</td><td class="p-4 text-slate-500 font-mono text-xs">${tags[key]}</td></tr>`;
                     });
 
-                    // 预警：完全没有 EXIF 的文件在审计中非常可疑
                     if (!hasExif) hits.add("EXIF_WIPED");
 
                     runPixelAnalysis(Array.from(hits));
@@ -309,18 +318,15 @@
 
                 const pixelDanger = blockDiffs > 25;
 
-                if (metadataHits.includes("EXIF_WIPED")) {
-                    addRiskAlert("数据清洗预警", "该图片未检测到任何原始拍摄元数据，疑似经过审计规避处理（洗图）。");
-                }
-
+                // 统一判定逻辑
                 if (metadataHits.length > 0 && !metadataHits.includes("EXIF_WIPED")) {
+                    // 命中黑名单关键属性，标记为审计异常
                     statusBadge.innerText = "🚨 审计异常";
                     statusBadge.style.backgroundColor = "#ef4444";
                     metadataHits.forEach(h => {
-                        let alertType = h === "SOFTWARE" ? "编辑软件指纹" : "指纹异常";
-                        addRiskAlert(alertType, `检出关键属性标记：[${h}]。确认图片经过非原机编辑。`);
+                        addRiskAlert("指纹异常检出", `检出关键属性标记：[${h}]。确认图片经过非原机编辑或包含标准化色彩指纹。`);
                     });
-                    summaryText.innerHTML = `<b>审计结论：判定为伪造/编辑。</b> 数据中包含非法软件标识或修图指纹。`;
+                    summaryText.innerHTML = `<b>审计结论：判定为伪造/编辑。</b> 数据中包含非法软件标识（如 Photoshop/Adobe）或异常指纹标记。`;
                 } else if (pixelDanger) {
                     statusBadge.innerText = "🚩 高度嫌疑";
                     statusBadge.style.backgroundColor = "#f59e0b";
@@ -329,8 +335,10 @@
                 } else if (metadataHits.includes("EXIF_WIPED")) {
                     statusBadge.innerText = "⚠️ 属性不明";
                     statusBadge.style.backgroundColor = "#6366f1";
-                    summaryText.innerText = "审计结论：由于元数据已被彻底抹除，系统无法确认其原始性。建议通过纸质原件核查。";
+                    addRiskAlert("数据清洗预警", "该图片未检测到任何原始拍摄元数据，疑似经过审计规避处理（洗图）。");
+                    summaryText.innerText = "审计结论：属性不明。由于元数据已被彻底抹除，建议通过纸质原件核查。";
                 } else {
+                    // 只有完全没有命中的情况下，才标记为自然
                     statusBadge.innerText = "🛡️ 属性自然";
                     statusBadge.style.backgroundColor = "#10b981";
                     summaryText.innerText = "审计结论：通过基本审计。未检出编辑指纹，像素分布暂未发现显著异常。";
