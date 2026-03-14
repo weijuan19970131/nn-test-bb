@@ -93,7 +93,7 @@
             </div>
             <div class="flex gap-4">
                 <button onclick="toggleGrid()" class="btn-action bg-white border border-slate-200 hover:bg-slate-50">切换对齐格栅</button>
-                <button onclick="resetSystem()" class="btn-action bg-white border border-slate-200 hover:bg-slate-50 text-red-500">全系统重置</button>
+                <button onclick="resetSystem()" class="btn-action bg-white border border-slate-200 hover:bg-slate-50 text-red-500">分析器重置</button>
                 <div id="sysStatus" class="btn-action shadow-inner" style="background-color: var(--almost-aqua);">系统已就绪</div>
             </div>
         </header>
@@ -164,7 +164,7 @@
         // 黑名单字眼库
         const BLACKLIST_KEYWORDS = [
             "PHOTOSHOP", "ADOBE", "MEITU", "PICTUREID", "THUMBNAILIMAGE", 
-            "国际照明委员会 1931", "国际电工委员会", "GIMP", "CANVA", "PICSART", "RETOUCH", "FAKED"
+            "国际照明委员会 1931", "国际电工委员会", "GIMP", "CANVA", "PICSART", "RETOUCH", "FAKED", "THUMBNAIL"
         ];
         
         const fileInput = document.getElementById('fileInput');
@@ -262,18 +262,31 @@
                 const binaryReader = new FileReader();
                 binaryReader.onload = function() {
                     const binaryContent = new TextDecoder().decode(new Uint8Array(this.result.slice(0, 1000000))).toUpperCase();
-                    const exifStr = JSON.stringify(tags).toUpperCase();
                     
-                    let hits = BLACKLIST_KEYWORDS.filter(word => {
-                        const upperWord = word.toUpperCase();
-                        return binaryContent.includes(upperWord) || exifStr.includes(upperWord);
+                    // 优化后的命中逻辑：直接扫描 EXIF 键值对以及原始二进制流
+                    let hits = new Set();
+                    
+                    // 1. 扫描二进制文本流
+                    BLACKLIST_KEYWORDS.forEach(word => {
+                        if (binaryContent.includes(word.toUpperCase())) hits.add(word);
                     });
 
+                    // 2. 精确扫描 EXIF 标签名和值
                     Object.keys(tags).forEach(key => {
+                        const upperKey = key.toUpperCase();
+                        const val = String(tags[key]).toUpperCase();
+                        
+                        // 针对性的精准匹配：如果标签名包含黑名单词汇（如 ThumbnailImage）
+                        BLACKLIST_KEYWORDS.forEach(word => {
+                            if (upperKey.includes(word.toUpperCase()) || val.includes(word.toUpperCase())) {
+                                hits.add(word);
+                            }
+                        });
+
                         tableBody.innerHTML += `<tr><td class="p-4 font-bold text-blue-500 w-1/3">${key}</td><td class="p-4 text-slate-500 font-mono text-xs">${tags[key]}</td></tr>`;
                     });
 
-                    runPixelAnalysis(hits);
+                    runPixelAnalysis(Array.from(hits));
                 };
                 binaryReader.readAsArrayBuffer(file);
             });
