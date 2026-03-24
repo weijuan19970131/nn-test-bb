@@ -56,10 +56,12 @@
             background-color: #000;
         }
 
+        /* 辅助对齐格栅样式 */
         .grid-overlay {
             background-image: linear-gradient(rgba(59, 130, 246, 0.2) 1px, transparent 1px), 
                               linear-gradient(90deg, rgba(59, 130, 246, 0.2) 1px, transparent 1px);
-            background-size: 25px 25px;
+            background-size: 30px 30px;
+            z-index: 20;
         }
 
         @keyframes scan-line {
@@ -92,8 +94,8 @@
                 </p>
             </div>
             <div class="flex gap-4">
-                <button onclick="toggleGrid()" class="btn-action bg-white border border-slate-200 hover:bg-slate-50">切换对齐格栅</button>
-                <button onclick="resetSystem()" class="btn-action bg-white border border-slate-200 hover:bg-slate-50 text-red-500">分析器重置</button>
+                <button onclick="toggleGrid()" class="btn-action bg-white border border-slate-300 hover:bg-slate-100 text-slate-600">切换对齐格栅</button>
+                <button onclick="resetSystem()" class="btn-action bg-white border border-slate-200 hover:bg-slate-50 text-red-500">重置分析</button>
                 <div id="sysStatus" class="btn-action shadow-inner" style="background-color: var(--almost-aqua);">系统已就绪</div>
             </div>
         </header>
@@ -105,25 +107,19 @@
                     <div class="w-32 h-32 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-sm" style="background-color: var(--lemon-icing);">
                         <svg class="w-16 h-16 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                     </div>
-                    <p class="text-slate-800 font-black text-3xl">载入待分析回单</p>
-                    <p class="text-slate-400 text-lg mt-3 font-medium italic">点击上传 或 拖拽图片至此</p>
+                    <p class="text-slate-800 font-black text-3xl">点击载入待分析回单</p>
+                    <p class="text-slate-400 text-xs mt-3 font-medium italic">点击上传（黏贴功能已禁用以防数据遗失）</p>
                     <input type="file" id="fileInput" class="hidden" accept="image/jpeg,image/png">
                 </div>
 
                 <div id="previewContainer" class="hidden pantone-card p-8">
-                    <div class="flex justify-between items-center mb-6">
-                        <span class="flex items-center gap-3">
-                            <span class="w-4 h-4 rounded-full animate-pulse bg-blue-500"></span>
-                            <h3 class="text-sm font-black text-slate-400 uppercase tracking-widest italic">Forensic Analysis Domain</h3>
-                        </span>
-                    </div>
                     <div class="relative rounded-[2rem] overflow-hidden shadow-2xl bg-[#080808]" id="canvasFrame">
                         <canvas id="imgCanvas" class="forensic-canvas w-full h-auto"></canvas>
                         <canvas id="maskCanvas" class="absolute top-0 left-0 w-full h-auto pointer-events-none opacity-80"></canvas>
+                        <!-- 对齐格栅层 -->
                         <div id="gridOverlay" class="absolute inset-0 pointer-events-none grid-overlay hidden"></div>
                         <div id="magnifier" class="magnifier" style="width:260px; height:260px;"></div>
                     </div>
-                    <p class="mt-4 text-xs text-slate-400 italic text-center">提示：红色方框区域表示该处像素存在非自然压缩特征（篡改高危区）</p>
                 </div>
             </div>
 
@@ -136,20 +132,17 @@
                     </div>
                     
                     <div class="p-10 flex-1 overflow-y-auto no-scrollbar">
-                        <!-- Risk Alerts -->
                         <div id="riskAlerts" class="space-y-4 mb-8"></div>
 
-                        <!-- Summary -->
                         <div class="p-8 rounded-[2rem] mb-10 border border-white shadow-inner bg-slate-50">
                             <h4 class="text-xs font-black text-blue-500 uppercase mb-3 italic tracking-widest">审计结论深度摘要</h4>
                             <p id="summaryText" class="text-base text-slate-700 leading-relaxed font-bold">准备就绪...</p>
                         </div>
 
-                        <!-- Metadata -->
                         <div id="exifDataArea" class="hidden">
                             <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-5 italic">原始元数据指纹清单</h4>
                             <div class="max-h-[400px] overflow-y-auto rounded-2xl border border-slate-100 no-scrollbar bg-white/40">
-                                <table class="w-full text-sm">
+                                <table class="w-full text-sm text-left">
                                     <tbody id="exifTableBody" class="divide-y divide-white/50"></tbody>
                                 </table>
                             </div>
@@ -161,12 +154,11 @@
     </div>
 
     <script>
-        // 关键审计黑名单
+        // 核心审计黑名单
         const BLACKLIST_KEYWORDS = [
-            "PHOTOSHOP", "ADOBE", "MEITU", "PICTUREID", "THUMBNAILIMAGE", 
-            "GIMP", "CANVA", "PICSART", "RETOUCH", "FAKED", 
-            "SOFTWARE", "XMP", "GENAI", "STABLE",
-            "国际照明委员会 1931", "国际电工委员会"
+            "PHOTOSHOP", "ADOBE", "MEITU", "PICTUREID", "THUMBNAILIMAGE", "XINGTU", 
+            "国际照明委员会 1931", "国际电工委员会", "GIMP", "CANVA", "PICSART",
+            "RETOUCH", "FAKED", "SOFTWARE", "XMP", "GENAI", "STABLE"
         ];
         
         const fileInput = document.getElementById('fileInput');
@@ -184,7 +176,10 @@
         const previewContainer = document.getElementById('previewContainer');
         const reportPanel = document.getElementById('reportPanel');
 
-        function toggleGrid() { gridOverlay.classList.toggle('hidden'); }
+        // 对齐格栅切换
+        function toggleGrid() { 
+            gridOverlay.classList.toggle('hidden'); 
+        }
 
         function resetSystem() {
             fileInput.value = "";
@@ -201,15 +196,17 @@
             document.getElementById('exifTableBody').innerHTML = "";
             document.getElementById('exifDataArea').classList.add('hidden');
             document.getElementById('canvasFrame').classList.remove('scanning');
+            gridOverlay.classList.add('hidden');
         }
 
+        // 不再支持粘贴功能，仅限点击上传
         dropZone.onclick = () => fileInput.click();
         fileInput.onchange = (e) => handleFile(e.target.files[0]);
 
         function handleFile(file) {
             if (!file) return;
             riskContainer.innerHTML = '';
-            summaryText.innerText = "深度扫描：正在执行像素一致性比对及元数据指纹审计...";
+            summaryText.innerText = "深度审计：正在执行指纹比对与像素分析...";
             statusBadge.innerText = "SCANNING";
             document.getElementById('canvasFrame').classList.add('scanning');
             
@@ -240,36 +237,51 @@
                 
                 const binaryReader = new FileReader();
                 binaryReader.onload = function() {
-                    const binaryContent = new TextDecoder().decode(new Uint8Array(this.result.slice(0, 1000000))).toUpperCase();
-                    let hits = new Set();
+                    const fileSize = file.size;
+                    const fullBuffer = new Uint8Array(this.result);
+                    const decoder = new TextDecoder();
                     
-                    // 1. 二进制流及元数据扫描
+                    // 双端二进制扫描 (头部 1MB + 尾部 512KB)
+                    const headContent = decoder.decode(fullBuffer.slice(0, 1000000)).toUpperCase();
+                    const tailContent = decoder.decode(fullBuffer.slice(Math.max(0, fileSize - 524288))).toUpperCase();
+                    const binaryContent = headContent + " [TAIL] " + tailContent;
+                    
+                    let hits = new Set();
+                    let hasExif = false;
+                    
+                    // 1. 遍历元数据标签
+                    Object.keys(tags).forEach(key => {
+                        hasExif = true;
+                        const kUpper = key.toUpperCase();
+                        const vStr = String(tags[key]).toUpperCase();
+                        let isBad = false;
+                        
+                        BLACKLIST_KEYWORDS.forEach(word => {
+                            if (kUpper.includes(word) || vStr.includes(word)) {
+                                if (vStr === "THUMBNAIL SOFTWARE" || vStr === "THUMBNAILSOFTWARE") return;
+                                hits.add(word);
+                                isBad = true;
+                            }
+                        });
+                        
+                        tableBody.innerHTML += `<tr class="${isBad ? 'bg-red-50 text-red-600 font-bold' : ''}">
+                            <td class="p-4 w-1/3">${key}</td>
+                            <td class="p-4 font-mono text-xs break-all">${tags[key]}</td>
+                        </tr>`;
+                    });
+
+                    // 2. 二进制关键词补漏
                     BLACKLIST_KEYWORDS.forEach(word => {
-                        const upperWord = word.toUpperCase();
-                        if (binaryContent.includes(upperWord)) {
-                            // 豁免逻辑：如果是 THUMBNAIL SOFTWARE 则不作为异常检出
-                            if (binaryContent.includes("THUMBNAIL SOFTWARE")) return;
+                        if (binaryContent.includes(word)) {
+                            if (binaryContent.includes("THUMBNAIL SOFTWARE") && !binaryContent.includes("THUMBNAILIMAGE")) return;
                             hits.add(word);
                         }
                     });
 
-                    // 2. EXIF 精确扫描
-                    let hasExif = false;
-                    Object.keys(tags).forEach(key => {
-                        hasExif = true;
-                        const upperKey = key.toUpperCase();
-                        const val = String(tags[key]).toUpperCase();
-                        
-                        BLACKLIST_KEYWORDS.forEach(word => {
-                            const upperWord = word.toUpperCase();
-                            if (upperKey.includes(upperWord) || val.includes(upperWord)) {
-                                // 豁免逻辑：THUMBNAIL SOFTWARE 组合不报警
-                                if (val === "THUMBNAIL SOFTWARE" || val === "THUMBNAILSOFTWARE") return;
-                                hits.add(word);
-                            }
-                        });
-                        tableBody.innerHTML += `<tr><td class="p-4 font-bold text-blue-500 w-1/3">${key}</td><td class="p-4 text-slate-500 font-mono text-xs">${tags[key]}</td></tr>`;
-                    });
+                    // 特殊逻辑：检测到有缩略图数据但解析库未列出具体标签
+                    if (tags.thumbnail && !hits.has("THUMBNAILIMAGE")) {
+                        hits.add("THUMBNAILIMAGE");
+                    }
 
                     if (!hasExif) hits.add("EXIF_WIPED");
 
@@ -316,32 +328,27 @@
                     }
                 }
 
-                const pixelDanger = blockDiffs > 25;
-
-                // 统一判定逻辑
                 if (metadataHits.length > 0 && !metadataHits.includes("EXIF_WIPED")) {
-                    // 命中黑名单关键属性，标记为审计异常
                     statusBadge.innerText = "🚨 审计异常";
                     statusBadge.style.backgroundColor = "#ef4444";
                     metadataHits.forEach(h => {
-                        addRiskAlert("指纹异常检出", `检出关键属性标记：[${h}]。确认图片经过非原机编辑或包含标准化色彩指纹。`);
+                        addRiskAlert("违禁属性检出", `检出敏感指纹 [${h}]。该图片由非拍摄设备或编辑软件生成。`);
                     });
-                    summaryText.innerHTML = `<b>审计结论：判定为伪造/编辑。</b> 数据中包含非法软件标识（如 Photoshop/Adobe）或异常指纹标记。`;
-                } else if (pixelDanger) {
+                    summaryText.innerHTML = `<b>审计结论：判定为编辑件。</b> 底层检出 ${metadataHits.join(', ')} 标记。该文件不能作为原始财务凭证。`;
+                } else if (blockDiffs > 25) {
                     statusBadge.innerText = "🚩 高度嫌疑";
                     statusBadge.style.backgroundColor = "#f59e0b";
-                    addRiskAlert("像素热图异常", "图像部分区域呈现非线性压缩特征，极大概率为局部抹除或修改。");
-                    summaryText.innerText = "审计结论：高度嫌疑。物理层特征显示局部存在拼贴或重绘。";
+                    addRiskAlert("像素结构异常", "画面局部发现明显的重压缩噪声，请使用“切换格栅”核对文字对齐情况。");
+                    summaryText.innerText = "审计结论：高度嫌疑。物理层特征显示存在二次合成迹象。";
                 } else if (metadataHits.includes("EXIF_WIPED")) {
                     statusBadge.innerText = "⚠️ 属性不明";
                     statusBadge.style.backgroundColor = "#6366f1";
-                    addRiskAlert("数据清洗预警", "该图片未检测到任何原始拍摄元数据，疑似经过审计规避处理（洗图）。");
-                    summaryText.innerText = "审计结论：属性不明。由于元数据已被彻底抹除，建议通过纸质原件核查。";
+                    addRiskAlert("元数据缺失", "文件指纹被抹除，系统无法确认来源设备，请开启格栅辅助核对。");
+                    summaryText.innerText = "审计结论：属性不明。由于指纹丢失，建议进行二次人工核查。";
                 } else {
-                    // 只有完全没有命中的情况下，才标记为自然
                     statusBadge.innerText = "🛡️ 属性自然";
                     statusBadge.style.backgroundColor = "#10b981";
-                    summaryText.innerText = "审计结论：通过基本审计。未检出编辑指纹，像素分布暂未发现显著异常。";
+                    summaryText.innerText = "审计结论：通过初步分析。未发现已知的伪造指纹，建议配合格栅进行核验。";
                 }
                 
                 document.getElementById('canvasFrame').classList.remove('scanning');
